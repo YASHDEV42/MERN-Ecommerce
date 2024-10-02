@@ -66,26 +66,92 @@ export const signup = async (req, res) => {
       message: "User created",
     });
   } catch (error) {
-    res.status(500).json({ message: "Something went wrong" });
+    res.status(500).json({ message: "Something went wrong", error: error });
   }
 };
 
 export const signin = async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({
-    email,
-    password,
-  });
+    const user = await User.findOne({
+      email,
+      password,
+    });
 
-  if (!user) {
-    return res.status(400).json({ error: "User does not exist" });
+    if (!user) {
+      return res.status(400).json({ error: "User does not exist" });
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user._id);
+
+    await storeRefreshToken(user._id, refreshToken);
+
+    setCookies(res, accessToken, refreshToken);
+
+    res.json({
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      message: "User signed in",
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Something went wrong" });
   }
-
-  res.json({ message: "User signed in" });
-  res.send("Signin Route");
 };
 
 export const signout = async (req, res) => {
-  res.send("Signout Route");
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (refreshToken) {
+      const decoded = jwt.verify(
+        refreshToken,
+        process.env.REFRESH_TOKEN_SECRET
+      );
+      await redis.del(`Refresh_Token: ${decoded.userId}`);
+    }
+
+    res.clearCookie("accessToken");
+    res.clearCookie("refreshToken");
+    res.json({ message: "User signed out" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Something went wrong", error: error.message });
+  }
+};
+
+export const refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken)
+      return res.status(401).json({ error: "No refresh token provided" });
+
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    const userId = decoded.userId;
+    const storedToken = await redis.get(`Refresh_Token: ${userId}`);
+    if (refreshToken !== storedToken) {
+      return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, {
+      expiresIn: "15m",
+    });
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.json({ message: "Access token refreshed" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Something went wrong", error: error.message });
+  }
 };
