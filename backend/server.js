@@ -23,6 +23,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Server
 app.listen(port, () => {
