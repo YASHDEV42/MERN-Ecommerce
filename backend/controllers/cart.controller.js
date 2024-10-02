@@ -3,8 +3,14 @@ import Product from "../models/Product.js";
 export const getCart = async (req, res) => {
   try {
     const products = await Product.find({ _id: { $in: req.user.cartItems } });
-    const user = req.user;
-    res.json(user.cartItems);
+
+    //add quantity to each product
+    const cartItems = products.map((product) => {
+      const item = req.user.cartItems.find((item) => item._id === product._id);
+      return { ...product.toJSON(), quantity: item.quantity };
+    });
+
+    res.json(cartItems);
   } catch (error) {
     res.status(500).json({ message: "Something went wrong" });
   }
