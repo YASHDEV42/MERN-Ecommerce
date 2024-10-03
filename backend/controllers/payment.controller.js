@@ -1,6 +1,8 @@
 import Coupon from "../models/Coupon.js";
+import Order from "../models/Order.js";
 import stripe from "stripe";
 
+// Create a new checkout session
 export const createCheckoutSession = async (req, res) => {
   const { products, couponCode } = req.body;
   const userId = req.user._id;
@@ -65,7 +67,7 @@ export const createCheckoutSession = async (req, res) => {
     await createNewCoupon(10, req.userId);
   }
 };
-
+// Create a new stripe coupon
 const createStripeCoupon = async (discountPercentage) => {
   const coupon = await stripe.coupons.create({
     percent_off: discountPercentage,
@@ -74,7 +76,7 @@ const createStripeCoupon = async (discountPercentage) => {
 
   return coupon.id;
 };
-
+// Create a new coupon
 const createNewCoupon = async (discountPercentage, userId) => {
   const coupon = new Coupon({
     code: Math.random().toString(36).substring(7).toUpperCase(),
@@ -84,4 +86,45 @@ const createNewCoupon = async (discountPercentage, userId) => {
   });
 
   return await coupon.save();
+};
+// Handle successful payment
+export const checkoutSuccess = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status === "paid") {
+      if (session.metadata.couponCode) {
+        await Coupon.findOneAndUpdate(
+          {
+            code: session.metadata.couponCode,
+            userId: session.metadata.userId,
+          },
+          { isActive: false }
+        );
+      }
+
+      const products = JSON.parse(session.metadata.products);
+      const newOrder = new Order({
+        user: session.metadata.userId,
+        products: products.map((product) => ({
+          product: product.id,
+          quantity: product.quantity,
+          price: product.price,
+        })),
+        totalAmount: session.amount_total / 100,
+        stripeSessionId: sessionId,
+      });
+
+      await newOrder.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Payment successful",
+        orderId: newOrder._id,
+      });
+    }
+    res.status(400).json({ message: "Payment failed" });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error occurred" });
+  }
 };
