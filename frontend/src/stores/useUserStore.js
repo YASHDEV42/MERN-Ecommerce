@@ -37,4 +37,32 @@ export const useUserStore = create((set) => ({
       toast.error(error.response.data.message || "An error occurred");
     }
   },
+  checkAuth: async () => {
+    try {
+      const res = await axios.get("/auth/profile");
+      console.log("data from useUserStore: ", res.data);
+
+      set({ user: res.data, checkingAuth: false });
+    } catch (e) {
+      set({ checkingAuth: false });
+      console.log(e);
+    }
+  },
+
+  logout: async () => {
+    set({ loading: true });
+
+    try {
+      console.log("logging out");
+
+      await axios.post("/auth/signout");
+      console.log("request sent");
+
+      set({ user: null, loading: false });
+      console.log("done");
+    } catch (error) {
+      set({ loading: false });
+      toast.error(error.response.data.message || "An error occurred");
+    }
+  },
 }));
